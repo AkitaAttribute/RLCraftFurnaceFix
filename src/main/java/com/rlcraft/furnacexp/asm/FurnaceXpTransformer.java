@@ -31,7 +31,7 @@ public class FurnaceXpTransformer implements IClassTransformer {
 
     private byte[] transformFurnace(byte[] basicClass) {
         ClassReader reader = new ClassReader(basicClass);
-        ClassWriter writer = new ClassWriter(reader, ClassWriter.COMPUTE_MAXS);
+        ClassWriter writer = new ClassWriter(reader, ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES);
         reader.accept(new ClassVisitor(Opcodes.ASM5, writer) {
             @Override
             public MethodVisitor visitMethod(int access, String name, String desc, String signature, String[] exceptions) {
@@ -93,13 +93,13 @@ public class FurnaceXpTransformer implements IClassTransformer {
 
                 return mv;
             }
-        }, 0);
+        }, ClassReader.EXPAND_FRAMES);
         return writer.toByteArray();
     }
 
     private byte[] transformSlotFurnaceOutput(byte[] basicClass) {
         ClassReader reader = new ClassReader(basicClass);
-        ClassWriter writer = new ClassWriter(reader, ClassWriter.COMPUTE_MAXS);
+        ClassWriter writer = new ClassWriter(reader, ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES);
         reader.accept(new ClassVisitor(Opcodes.ASM5, writer) {
             @Override
             public MethodVisitor visitMethod(int access, String name, String desc, String signature, String[] exceptions) {
@@ -136,13 +136,13 @@ public class FurnaceXpTransformer implements IClassTransformer {
 
                 return mv;
             }
-        }, 0);
+        }, ClassReader.EXPAND_FRAMES);
         return writer.toByteArray();
     }
 
     private byte[] transformBlockFurnace(byte[] basicClass) {
         ClassReader reader = new ClassReader(basicClass);
-        ClassWriter writer = new ClassWriter(reader, ClassWriter.COMPUTE_MAXS);
+        ClassWriter writer = new ClassWriter(reader, ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES);
         reader.accept(new ClassVisitor(Opcodes.ASM5, writer) {
             @Override
             public MethodVisitor visitMethod(int access, String name, String desc, String signature, String[] exceptions) {
@@ -161,7 +161,7 @@ public class FurnaceXpTransformer implements IClassTransformer {
 
                 return mv;
             }
-        }, 0);
+        }, ClassReader.EXPAND_FRAMES);
         return writer.toByteArray();
     }
 }
