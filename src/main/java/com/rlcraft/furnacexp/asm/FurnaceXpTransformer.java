@@ -127,7 +127,7 @@ public class FurnaceXpTransformer implements IClassTransformer {
                                 loadThis();
                                 visitFieldInsn(GETFIELD, "net/minecraft/inventory/SlotFurnaceOutput", "field_75229_a", "Lnet/minecraft/entity/player/EntityPlayer;");
                                 loadThis();
-                                visitFieldInsn(GETFIELD, "net/minecraft/inventory/SlotFurnaceOutput", "field_75228_b", "Lnet/minecraft/inventory/IInventory;");
+                                visitFieldInsn(GETFIELD, "net/minecraft/inventory/Slot", "field_75224_c", "Lnet/minecraft/inventory/IInventory;");
                                 invokeStatic(Type.getObjectType(HOOKS), new Method("onOutputSlotCrafted", "(Lnet/minecraft/entity/player/EntityPlayer;Lnet/minecraft/inventory/IInventory;)V"));
                             }
                         }
