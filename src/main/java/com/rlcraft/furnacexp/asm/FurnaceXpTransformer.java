@@ -37,6 +37,28 @@ public class FurnaceXpTransformer implements IClassTransformer {
             public MethodVisitor visitMethod(int access, String name, String desc, String signature, String[] exceptions) {
                 MethodVisitor mv = super.visitMethod(access, name, desc, signature, exceptions);
 
+                if (("removeStackFromSlot".equals(name) || "func_70304_b".equals(name)) && "(I)Lnet/minecraft/item/ItemStack;".equals(desc)) {
+                    return new AdviceAdapter(Opcodes.ASM5, mv, access, name, desc) {
+                        private int stackLocal = -1;
+
+                        @Override
+                        protected void onMethodExit(int opcode) {
+                            if (opcode == ARETURN) {
+                                if (stackLocal == -1) {
+                                    stackLocal = newLocal(Type.getObjectType("net/minecraft/item/ItemStack"));
+                                }
+                                storeLocal(stackLocal);
+                                loadThis();
+                                loadArg(0);
+                                loadLocal(stackLocal);
+                                invokeStatic(Type.getObjectType(HOOKS), new Method("onFurnaceRemoveStackFromSlot", "(Lnet/minecraft/tileentity/TileEntityFurnace;ILnet/minecraft/item/ItemStack;)V"));
+                                loadLocal(stackLocal);
+                            }
+                        }
+                    };
+                }
+
+
                 if (("decrStackSize".equals(name) || "func_70298_a".equals(name)) && "(II)Lnet/minecraft/item/ItemStack;".equals(desc)) {
                     return new AdviceAdapter(Opcodes.ASM5, mv, access, name, desc) {
                         private int stackLocal = -1;

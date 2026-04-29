@@ -53,6 +53,11 @@ public final class FurnaceXpHooks {
         }
     }
 
+
+    public static void onFurnaceRemoveStackFromSlot(TileEntityFurnace furnace, int index, ItemStack extracted) {
+        onFurnaceDecrStack(furnace, index, extracted);
+    }
+
     private static boolean isPlayerExtractContext() {
         return PLAYER_EXTRACT_DEPTH.get() != null;
     }
