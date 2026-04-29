@@ -1,6 +1,7 @@
 # RLCraftFurnaceFix
 
 Minecraft Forge 1.12.2 mod that backports modern furnace XP preservation behavior to vanilla furnaces.
+It is developed against Forge 14.23.5.2847 as a known-good baseline and is expected to work across nearby Forge 14.23.5 builds where the touched vanilla/Forge internals are unchanged.
 
 ## What it changes
 

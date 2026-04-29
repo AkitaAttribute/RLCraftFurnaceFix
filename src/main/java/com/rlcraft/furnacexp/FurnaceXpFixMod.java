@@ -6,5 +6,5 @@ import net.minecraftforge.fml.common.Mod;
 public class FurnaceXpFixMod {
     public static final String MODID = "rlcraftfurnacefix";
     public static final String NAME = "RLCraft Furnace XP Fix";
-    public static final String VERSION = "1.0.1";
+    public static final String VERSION = "1.0.2";
 }

@@ -17,8 +17,8 @@ import java.util.Map;
 import java.util.WeakHashMap;
 
 public final class FurnaceXpHooks {
-    private static final String NBT_KEY = "rlcraftfurnacefix.stored_xp";
-    private static final Map<TileEntityFurnace, Integer> STORED_XP = Collections.synchronizedMap(new WeakHashMap<TileEntityFurnace, Integer>());
+    private static final String NBT_KEY = "rlcraftfurnacefix.stored_xp_precise";
+    private static final Map<TileEntityFurnace, Double> STORED_XP = Collections.synchronizedMap(new WeakHashMap<TileEntityFurnace, Double>());
     private static final ThreadLocal<Integer> PLAYER_EXTRACT_DEPTH = new ThreadLocal<Integer>();
 
     private FurnaceXpHooks() {
@@ -47,8 +47,8 @@ public final class FurnaceXpHooks {
             return;
         }
 
-        int xp = calculateSmeltingXp(extracted, extracted.getCount());
-        if (xp > 0) {
+        double xp = calculateSmeltingXp(extracted, extracted.getCount());
+        if (xp > 0.0D) {
             addStoredXp(furnace, xp);
         }
     }
@@ -62,8 +62,8 @@ public final class FurnaceXpHooks {
             return;
         }
 
-        int stored = nbt.getInteger(NBT_KEY);
-        if (stored > 0) {
+        double stored = nbt.getDouble(NBT_KEY);
+        if (stored > 0.0D) {
             STORED_XP.put(furnace, stored);
         } else {
             STORED_XP.remove(furnace);
@@ -75,9 +75,9 @@ public final class FurnaceXpHooks {
             return;
         }
 
-        int stored = getStoredXp(furnace);
-        if (stored > 0) {
-            nbt.setInteger(NBT_KEY, stored);
+        double stored = getStoredXp(furnace);
+        if (stored > 0.0D) {
+            nbt.setDouble(NBT_KEY, stored);
         } else {
             nbt.removeTag(NBT_KEY);
         }
@@ -111,7 +111,7 @@ public final class FurnaceXpHooks {
     }
 
     private static void payoutStoredXp(TileEntityFurnace furnace, World world, double x, double y, double z) {
-        int stored = drainStoredXp(furnace);
+        int stored = toVanillaExperience(drainStoredXp(furnace));
         while (stored > 0) {
             int split = EntityXPOrb.getXPSplit(stored);
             stored -= split;
@@ -119,35 +119,42 @@ public final class FurnaceXpHooks {
         }
     }
 
-    private static int calculateSmeltingXp(ItemStack stack, int count) {
+    private static double calculateSmeltingXp(ItemStack stack, int count) {
         float experience = FurnaceRecipes.instance().getSmeltingExperience(stack);
         if (experience <= 0.0F) {
+            return 0.0D;
+        }
+
+        return count * (double) experience;
+    }
+
+    private static int toVanillaExperience(double stored) {
+        if (stored <= 0.0D) {
             return 0;
         }
 
-        double total = count * experience;
-        int xp = MathHelper.floor(total);
-        if (xp < MathHelper.ceil(total) && Math.random() < total - xp) {
-            xp++;
+        int floor = MathHelper.floor(stored);
+        if (floor < MathHelper.ceil(stored) && Math.random() < stored - floor) {
+            floor++;
         }
-        return xp;
+        return floor;
     }
 
-    private static void addStoredXp(TileEntityFurnace furnace, int amount) {
+    private static void addStoredXp(TileEntityFurnace furnace, double amount) {
         synchronized (STORED_XP) {
-            int current = getStoredXp(furnace);
+            double current = getStoredXp(furnace);
             STORED_XP.put(furnace, current + amount);
         }
     }
 
-    private static int getStoredXp(TileEntityFurnace furnace) {
-        Integer value = STORED_XP.get(furnace);
-        return value == null ? 0 : value;
+    private static double getStoredXp(TileEntityFurnace furnace) {
+        Double value = STORED_XP.get(furnace);
+        return value == null ? 0.0D : value;
     }
 
-    private static int drainStoredXp(TileEntityFurnace furnace) {
+    private static double drainStoredXp(TileEntityFurnace furnace) {
         synchronized (STORED_XP) {
-            int stored = getStoredXp(furnace);
+            double stored = getStoredXp(furnace);
             STORED_XP.remove(furnace);
             return stored;
         }
