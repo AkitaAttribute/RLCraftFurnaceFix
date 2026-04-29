@@ -1,0 +1,16 @@
+[
+  {
+    "modid": "rlcraftfurnacefix",
+    "name": "RLCraft Furnace XP Fix",
+    "description": "Backports modern furnace XP retention for automation on 1.12.2 vanilla furnaces.",
+    "version": "${version}",
+    "mcversion": "${mcversion}",
+    "url": "",
+    "updateUrl": "",
+    "authorList": ["Codex"],
+    "credits": "",
+    "logoFile": "",
+    "screenshots": [],
+    "dependencies": []
+  }
+]
