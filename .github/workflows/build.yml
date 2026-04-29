@@ -29,6 +29,11 @@ jobs:
       - name: Upload mod jar
         uses: actions/upload-artifact@v4
         with:
-          name: rlcraft-furnace-xp-fix-jars
-          path: build/libs/*.jar
+          name: rlcraft-furnace-xp-fix-jar
+          path: |
+            build/libs/*.jar
+            !build/libs/*-sources.jar
+            !build/libs/*-dev.jar
+            !build/libs/*-deobf.jar
+            !build/libs/*-api.jar
           if-no-files-found: error
