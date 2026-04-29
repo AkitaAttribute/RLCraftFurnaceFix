@@ -34,6 +34,15 @@ public class FurnaceXpTransformer implements IClassTransformer {
         ClassWriter writer = new ClassWriter(reader, ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES);
         reader.accept(new ClassVisitor(Opcodes.ASM5, writer) {
             @Override
+            public void visitEnd() {
+                FieldVisitor fv = super.visitField(Opcodes.ACC_PUBLIC, "rlcraftfurnacefix$storedXp", "D", null, null);
+                if (fv != null) {
+                    fv.visitEnd();
+                }
+                super.visitEnd();
+            }
+
+            @Override
             public MethodVisitor visitMethod(int access, String name, String desc, String signature, String[] exceptions) {
                 MethodVisitor mv = super.visitMethod(access, name, desc, signature, exceptions);
 

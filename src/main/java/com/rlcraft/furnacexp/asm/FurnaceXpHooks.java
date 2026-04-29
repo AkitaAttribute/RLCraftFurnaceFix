@@ -12,13 +12,11 @@ import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.MathHelper;
 import net.minecraft.world.World;
 
-import java.util.Collections;
-import java.util.Map;
-import java.util.WeakHashMap;
+import java.lang.reflect.Field;
 
 public final class FurnaceXpHooks {
     private static final String NBT_KEY = "rlcraftfurnacefix.stored_xp_precise";
-    private static final Map<TileEntityFurnace, Double> STORED_XP = Collections.synchronizedMap(new WeakHashMap<TileEntityFurnace, Double>());
+    private static final String FIELD_NAME = "rlcraftfurnacefix$storedXp";
     private static final ThreadLocal<Integer> PLAYER_EXTRACT_DEPTH = new ThreadLocal<Integer>();
 
     private FurnaceXpHooks() {
@@ -43,16 +41,15 @@ public final class FurnaceXpHooks {
             return;
         }
 
-        if (Boolean.TRUE.equals(isPlayerExtractContext())) {
+        if (isPlayerExtractContext()) {
             return;
         }
 
         double xp = calculateSmeltingXp(extracted, extracted.getCount());
         if (xp > 0.0D) {
-            addStoredXp(furnace, xp);
+            setStoredXp(furnace, getStoredXp(furnace) + xp);
         }
     }
-
 
     public static void onFurnaceRemoveStackFromSlot(TileEntityFurnace furnace, int index, ItemStack extracted) {
         onFurnaceDecrStack(furnace, index, extracted);
@@ -66,13 +63,7 @@ public final class FurnaceXpHooks {
         if (furnace == null || nbt == null) {
             return;
         }
-
-        double stored = nbt.getDouble(NBT_KEY);
-        if (stored > 0.0D) {
-            STORED_XP.put(furnace, stored);
-        } else {
-            STORED_XP.remove(furnace);
-        }
+        setStoredXp(furnace, nbt.getDouble(NBT_KEY));
     }
 
     public static void onWriteToNbt(TileEntityFurnace furnace, NBTTagCompound nbt) {
@@ -92,13 +83,10 @@ public final class FurnaceXpHooks {
         if (player == null || player.world == null || player.world.isRemote) {
             return;
         }
-
         if (!(inventory instanceof TileEntityFurnace)) {
             return;
         }
-
-        TileEntityFurnace furnace = (TileEntityFurnace) inventory;
-        payoutStoredXp(furnace, player.world, player.posX, player.posY + 0.5D, player.posZ);
+        payoutStoredXp((TileEntityFurnace) inventory, player.world, player.posX, player.posY + 0.5D, player.posZ);
     }
 
     public static void onFurnaceBroken(World world, BlockPos pos) {
@@ -107,12 +95,9 @@ public final class FurnaceXpHooks {
         }
 
         TileEntity te = world.getTileEntity(pos);
-        if (!(te instanceof TileEntityFurnace)) {
-            return;
+        if (te instanceof TileEntityFurnace) {
+            payoutStoredXp((TileEntityFurnace) te, world, pos.getX() + 0.5D, pos.getY() + 0.5D, pos.getZ() + 0.5D);
         }
-
-        TileEntityFurnace furnace = (TileEntityFurnace) te;
-        payoutStoredXp(furnace, world, pos.getX() + 0.5D, pos.getY() + 0.5D, pos.getZ() + 0.5D);
     }
 
     private static void payoutStoredXp(TileEntityFurnace furnace, World world, double x, double y, double z) {
@@ -129,7 +114,6 @@ public final class FurnaceXpHooks {
         if (experience <= 0.0F) {
             return 0.0D;
         }
-
         return count * (double) experience;
     }
 
@@ -137,7 +121,6 @@ public final class FurnaceXpHooks {
         if (stored <= 0.0D) {
             return 0;
         }
-
         int floor = MathHelper.floor(stored);
         if (floor < MathHelper.ceil(stored) && Math.random() < stored - floor) {
             floor++;
@@ -145,23 +128,25 @@ public final class FurnaceXpHooks {
         return floor;
     }
 
-    private static void addStoredXp(TileEntityFurnace furnace, double amount) {
-        synchronized (STORED_XP) {
-            double current = getStoredXp(furnace);
-            STORED_XP.put(furnace, current + amount);
+    private static double getStoredXp(TileEntityFurnace furnace) {
+        try {
+            return furnace.getClass().getField(FIELD_NAME).getDouble(furnace);
+        } catch (Throwable ignored) {
+            return 0.0D;
         }
     }
 
-    private static double getStoredXp(TileEntityFurnace furnace) {
-        Double value = STORED_XP.get(furnace);
-        return value == null ? 0.0D : value;
+    private static void setStoredXp(TileEntityFurnace furnace, double value) {
+        try {
+            Field field = furnace.getClass().getField(FIELD_NAME);
+            field.setDouble(furnace, Math.max(0.0D, value));
+        } catch (Throwable ignored) {
+        }
     }
 
     private static double drainStoredXp(TileEntityFurnace furnace) {
-        synchronized (STORED_XP) {
-            double stored = getStoredXp(furnace);
-            STORED_XP.remove(furnace);
-            return stored;
-        }
+        double value = getStoredXp(furnace);
+        setStoredXp(furnace, 0.0D);
+        return value;
     }
 }
