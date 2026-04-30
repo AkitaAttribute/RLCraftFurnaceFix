@@ -22,9 +22,6 @@ public class FurnaceXpTransformer implements IClassTransformer {
             return transformSlotFurnaceOutput(basicClass);
         }
 
-        if ("net.minecraft.block.BlockFurnace".equals(transformedName)) {
-            return transformBlockFurnace(basicClass);
-        }
 
         return basicClass;
     }
@@ -161,31 +158,6 @@ public class FurnaceXpTransformer implements IClassTransformer {
                                 visitFieldInsn(GETFIELD, "net/minecraft/inventory/Slot", "field_75224_c", "Lnet/minecraft/inventory/IInventory;");
                                 invokeStatic(Type.getObjectType(HOOKS), new Method("onOutputSlotCrafted", "(Lnet/minecraft/entity/player/EntityPlayer;Lnet/minecraft/inventory/IInventory;)V"));
                             }
-                        }
-                    };
-                }
-
-                return mv;
-            }
-        }, ClassReader.EXPAND_FRAMES);
-        return writer.toByteArray();
-    }
-
-    private byte[] transformBlockFurnace(byte[] basicClass) {
-        ClassReader reader = new ClassReader(basicClass);
-        ClassWriter writer = new ClassWriter(reader, ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES);
-        reader.accept(new ClassVisitor(Opcodes.ASM5, writer) {
-            @Override
-            public MethodVisitor visitMethod(int access, String name, String desc, String signature, String[] exceptions) {
-                MethodVisitor mv = super.visitMethod(access, name, desc, signature, exceptions);
-
-                if (("breakBlock".equals(name) || "func_180663_b".equals(name)) && "(Lnet/minecraft/world/World;Lnet/minecraft/util/math/BlockPos;Lnet/minecraft/block/state/IBlockState;)V".equals(desc)) {
-                    return new AdviceAdapter(Opcodes.ASM5, mv, access, name, desc) {
-                        @Override
-                        protected void onMethodEnter() {
-                            loadArg(0);
-                            loadArg(1);
-                            invokeStatic(Type.getObjectType(HOOKS), new Method("onFurnaceBroken", "(Lnet/minecraft/world/World;Lnet/minecraft/util/math/BlockPos;)V"));
                         }
                     };
                 }

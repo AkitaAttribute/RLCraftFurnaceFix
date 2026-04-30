@@ -1,15 +1,12 @@
 package com.rlcraft.furnacexp.asm;
 
-import net.minecraft.block.BlockFurnace;
 import net.minecraft.entity.item.EntityXPOrb;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.inventory.IInventory;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.crafting.FurnaceRecipes;
 import net.minecraft.nbt.NBTTagCompound;
-import net.minecraft.tileentity.TileEntity;
 import net.minecraft.tileentity.TileEntityFurnace;
-import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.MathHelper;
 import net.minecraft.world.World;
 
@@ -19,7 +16,6 @@ public final class FurnaceXpHooks {
     private static final String NBT_KEY = "rlcraftfurnacefix.stored_xp_precise";
     private static final String FIELD_NAME = "rlcraftfurnacefix$storedXp";
     private static final ThreadLocal<Integer> PLAYER_EXTRACT_DEPTH = new ThreadLocal<Integer>();
-    private static final Field BLOCK_FURNACE_KEEP_INVENTORY = findKeepInventoryField();
 
     private FurnaceXpHooks() {
     }
@@ -92,47 +88,6 @@ public final class FurnaceXpHooks {
     }
 
 
-    private static Field findKeepInventoryField() {
-        try {
-            Field field = BlockFurnace.class.getDeclaredField("keepInventory");
-            field.setAccessible(true);
-            return field;
-        } catch (Throwable ignored) {
-            try {
-                Field field = BlockFurnace.class.getDeclaredField("field_149934_M");
-                field.setAccessible(true);
-                return field;
-            } catch (Throwable ignoredToo) {
-                return null;
-            }
-        }
-    }
-
-    private static boolean isVanillaFurnaceStateSwap() {
-        if (BLOCK_FURNACE_KEEP_INVENTORY == null) {
-            return false;
-        }
-        try {
-            return BLOCK_FURNACE_KEEP_INVENTORY.getBoolean(null);
-        } catch (Throwable ignored) {
-            return false;
-        }
-    }
-
-    public static void onFurnaceBroken(World world, BlockPos pos) {
-        if (world == null || pos == null || world.isRemote) {
-            return;
-        }
-
-        if (isVanillaFurnaceStateSwap()) {
-            return;
-        }
-
-        TileEntity te = world.getTileEntity(pos);
-        if (te instanceof TileEntityFurnace) {
-            payoutStoredXp((TileEntityFurnace) te, world, pos.getX() + 0.5D, pos.getY() + 0.5D, pos.getZ() + 0.5D);
-        }
-    }
 
     private static void payoutStoredXp(TileEntityFurnace furnace, World world, double x, double y, double z) {
         int stored = toVanillaExperience(drainStoredXp(furnace));
