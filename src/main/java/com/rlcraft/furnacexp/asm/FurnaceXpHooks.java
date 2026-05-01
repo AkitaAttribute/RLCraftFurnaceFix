@@ -23,8 +23,8 @@ public final class FurnaceXpHooks {
     private static final String FIELD_AUTO_ITEMS = "rlcraftfurnacefix$autoSmeltedItems";
     private static final ThreadLocal<Integer> PLAYER_EXTRACT_DEPTH = new ThreadLocal<Integer>();
     private static final Logger LOGGER = LogManager.getLogger("RLCraftFurnaceFix");
-    private static final double MAX_REASONABLE_XP_PER_ITEM = 0.1D;
-    private static final double BASE_REASONABLE_XP_BUFFER = 100.0D;
+    private static final double MAX_REASONABLE_XP_PER_ITEM = 10.0D;
+    private static final double RESET_XP_PER_ITEM = 0.1D;
     private static final double ABSOLUTE_STORED_XP_CEILING = 10000.0D;
 
     private FurnaceXpHooks() {
@@ -77,15 +77,29 @@ public final class FurnaceXpHooks {
         BlockPos pos = furnace.getPos();
         LOGGER.info("Furnace XP NBT load: storedXp={}, autoSmeltedItems={} @ {}", loadedStoredXp, loadedAutoSmeltedItems, pos);
 
-        double maxReasonableStoredXp = (Math.max(0, loadedAutoSmeltedItems) * MAX_REASONABLE_XP_PER_ITEM) + BASE_REASONABLE_XP_BUFFER;
+        double maxReasonableStoredXp = Math.max(0, loadedAutoSmeltedItems) * MAX_REASONABLE_XP_PER_ITEM;
         if (loadedStoredXp > ABSOLUTE_STORED_XP_CEILING || loadedStoredXp > maxReasonableStoredXp) {
-            LOGGER.warn("Furnace XP NBT load sanity guard triggered: storedXp={} exceeds limit={} (autoSmeltedItems={}) @ {}. Resetting stored XP to 0.",
-                    loadedStoredXp, Math.min(ABSOLUTE_STORED_XP_CEILING, maxReasonableStoredXp), loadedAutoSmeltedItems, pos);
-            loadedStoredXp = 0.0D;
+            double resetValue = Math.max(0, loadedAutoSmeltedItems) * RESET_XP_PER_ITEM;
+            String warning = String.format("Furnace XP NBT sanity issue: raw=%.2f, autoSmeltedItems=%d, maxAllowed=%.2f @ %s. Resetting stored XP to %.2f.",
+                    loadedStoredXp, loadedAutoSmeltedItems, maxReasonableStoredXp, pos, resetValue);
+            LOGGER.warn(warning);
+            sendWorldDebugMessage(furnace.getWorld(), warning);
+            loadedStoredXp = resetValue;
         }
 
         setStoredXp(furnace, loadedStoredXp);
         setAutoSmeltedItems(furnace, loadedAutoSmeltedItems);
+    }
+
+    private static void sendWorldDebugMessage(World world, String message) {
+        if (world == null || world.isRemote || message == null || message.isEmpty()) {
+            return;
+        }
+        for (EntityPlayer player : world.playerEntities) {
+            if (player != null) {
+                player.sendMessage(new TextComponentString(message));
+            }
+        }
     }
 
     public static void onWriteToNbt(TileEntityFurnace furnace, NBTTagCompound nbt) {
