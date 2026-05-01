@@ -25,7 +25,6 @@ public final class FurnaceXpHooks {
     private static final Logger LOGGER = LogManager.getLogger("RLCraftFurnaceFix");
     private static final double MAX_REASONABLE_XP_PER_ITEM = 10.0D;
     private static final double RESET_XP_PER_ITEM = 0.1D;
-    private static final double ABSOLUTE_STORED_XP_CEILING = 10000.0D;
 
     private FurnaceXpHooks() {
     }
@@ -78,7 +77,7 @@ public final class FurnaceXpHooks {
         LOGGER.info("Furnace XP NBT load: storedXp={}, autoSmeltedItems={} @ {}", loadedStoredXp, loadedAutoSmeltedItems, pos);
 
         double maxReasonableStoredXp = Math.max(0, loadedAutoSmeltedItems) * MAX_REASONABLE_XP_PER_ITEM;
-        if (loadedStoredXp > ABSOLUTE_STORED_XP_CEILING || loadedStoredXp > maxReasonableStoredXp) {
+        if (loadedStoredXp > maxReasonableStoredXp) {
             double resetValue = Math.max(0, loadedAutoSmeltedItems) * RESET_XP_PER_ITEM;
             String warning = String.format("Furnace XP NBT sanity issue: raw=%.2f, autoSmeltedItems=%d, maxAllowed=%.2f @ %s. Resetting stored XP to %.2f.",
                     loadedStoredXp, loadedAutoSmeltedItems, maxReasonableStoredXp, pos, resetValue);
