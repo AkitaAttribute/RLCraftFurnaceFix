@@ -7,15 +7,22 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.item.crafting.FurnaceRecipes;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.tileentity.TileEntityFurnace;
+import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.MathHelper;
+import net.minecraft.util.text.TextComponentString;
 import net.minecraft.world.World;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import java.lang.reflect.Field;
 
 public final class FurnaceXpHooks {
     private static final String NBT_KEY = "rlcraftfurnacefix.stored_xp_precise";
+    private static final String NBT_KEY_AUTO_ITEMS = "rlcraftfurnacefix.auto_smelted_items";
     private static final String FIELD_NAME = "rlcraftfurnacefix$storedXp";
+    private static final String FIELD_AUTO_ITEMS = "rlcraftfurnacefix$autoSmeltedItems";
     private static final ThreadLocal<Integer> PLAYER_EXTRACT_DEPTH = new ThreadLocal<Integer>();
+    private static final Logger LOGGER = LogManager.getLogger("RLCraftFurnaceFix");
 
     private FurnaceXpHooks() {
     }
@@ -46,6 +53,7 @@ public final class FurnaceXpHooks {
         double xp = calculateSmeltingXp(extracted, extracted.getCount());
         if (xp > 0.0D) {
             setStoredXp(furnace, getStoredXp(furnace) + xp);
+            setAutoSmeltedItems(furnace, getAutoSmeltedItems(furnace) + extracted.getCount());
         }
     }
 
@@ -62,6 +70,7 @@ public final class FurnaceXpHooks {
             return;
         }
         setStoredXp(furnace, nbt.getDouble(NBT_KEY));
+        setAutoSmeltedItems(furnace, nbt.getInteger(NBT_KEY_AUTO_ITEMS));
     }
 
     public static void onWriteToNbt(TileEntityFurnace furnace, NBTTagCompound nbt) {
@@ -75,6 +84,13 @@ public final class FurnaceXpHooks {
         } else {
             nbt.removeTag(NBT_KEY);
         }
+
+        int autoSmeltedItems = getAutoSmeltedItems(furnace);
+        if (autoSmeltedItems > 0) {
+            nbt.setInteger(NBT_KEY_AUTO_ITEMS, autoSmeltedItems);
+        } else {
+            nbt.removeTag(NBT_KEY_AUTO_ITEMS);
+        }
     }
 
     public static void onOutputSlotCrafted(EntityPlayer player, IInventory inventory) {
@@ -84,18 +100,45 @@ public final class FurnaceXpHooks {
         if (!(inventory instanceof TileEntityFurnace)) {
             return;
         }
-        payoutStoredXp((TileEntityFurnace) inventory, player.world, player.posX, player.posY + 0.5D, player.posZ);
+        payoutStoredXp((TileEntityFurnace) inventory, player, player.world, player.posX, player.posY + 0.5D, player.posZ);
     }
 
+    private static void payoutStoredXp(TileEntityFurnace furnace, EntityPlayer player, World world, double x, double y, double z) {
+        double rawStoredXp = getStoredXp(furnace);
+        int payoutXp = toVanillaExperience(rawStoredXp);
+        int autoSmeltedItems = getAutoSmeltedItems(furnace);
+        String debugMessage = formatPayoutDebugMessage(rawStoredXp, payoutXp, autoSmeltedItems);
+        if (player != null) {
+            player.sendMessage(new TextComponentString(debugMessage));
+        }
 
+        BlockPos pos = furnace != null ? furnace.getPos() : null;
+        LOGGER.info("{}{}", debugMessage, pos == null ? "" : " @ " + pos);
 
-    private static void payoutStoredXp(TileEntityFurnace furnace, World world, double x, double y, double z) {
         int stored = toVanillaExperience(drainStoredXp(furnace));
         while (stored > 0) {
             int split = EntityXPOrb.getXPSplit(stored);
             stored -= split;
             world.spawnEntity(new EntityXPOrb(world, x, y, z, split));
         }
+    }
+
+    private static String formatPayoutDebugMessage(double rawStoredXp, int payoutXp, int autoSmeltedItems) {
+        return String.format("Furnace XP Debug: raw=%.2f, payout=%d xp, approxLevels=%.2f, autoSmeltedItems=%d",
+                rawStoredXp, payoutXp, approximateLevelFromTotalXp(payoutXp), autoSmeltedItems);
+    }
+
+    private static double approximateLevelFromTotalXp(int totalXp) {
+        if (totalXp <= 0) {
+            return 0.0D;
+        }
+        if (totalXp <= 352) {
+            return (-6.0D + Math.sqrt(36.0D + (4.0D * totalXp))) / 2.0D;
+        }
+        if (totalXp <= 1507) {
+            return (40.5D + Math.sqrt(40.5D * 40.5D - 10.0D * (360.0D - totalXp))) / 5.0D;
+        }
+        return (162.5D + Math.sqrt(162.5D * 162.5D - 18.0D * (2220.0D - totalXp))) / 9.0D;
     }
 
     private static double calculateSmeltingXp(ItemStack stack, int count) {
@@ -133,9 +176,26 @@ public final class FurnaceXpHooks {
         }
     }
 
+    private static int getAutoSmeltedItems(TileEntityFurnace furnace) {
+        try {
+            return furnace.getClass().getField(FIELD_AUTO_ITEMS).getInt(furnace);
+        } catch (Throwable ignored) {
+            return 0;
+        }
+    }
+
+    private static void setAutoSmeltedItems(TileEntityFurnace furnace, int value) {
+        try {
+            Field field = furnace.getClass().getField(FIELD_AUTO_ITEMS);
+            field.setInt(furnace, Math.max(0, value));
+        } catch (Throwable ignored) {
+        }
+    }
+
     private static double drainStoredXp(TileEntityFurnace furnace) {
         double value = getStoredXp(furnace);
         setStoredXp(furnace, 0.0D);
+        setAutoSmeltedItems(furnace, 0);
         return value;
     }
 }

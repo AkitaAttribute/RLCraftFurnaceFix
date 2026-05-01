@@ -36,6 +36,10 @@ public class FurnaceXpTransformer implements IClassTransformer {
                 if (fv != null) {
                     fv.visitEnd();
                 }
+                FieldVisitor counter = super.visitField(Opcodes.ACC_PUBLIC, "rlcraftfurnacefix$autoSmeltedItems", "I", null, null);
+                if (counter != null) {
+                    counter.visitEnd();
+                }
                 super.visitEnd();
             }
 
