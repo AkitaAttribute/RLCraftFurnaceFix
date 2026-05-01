@@ -23,7 +23,7 @@ public final class FurnaceXpHooks {
     private static final String FIELD_AUTO_ITEMS = "rlcraftfurnacefix$autoSmeltedItems";
     private static final ThreadLocal<Integer> PLAYER_EXTRACT_DEPTH = new ThreadLocal<Integer>();
     private static final Logger LOGGER = LogManager.getLogger("RLCraftFurnaceFix");
-    private static final double MAX_REASONABLE_XP_PER_ITEM = 20.0D;
+    private static final double MAX_REASONABLE_XP_PER_ITEM = 0.1D;
     private static final double BASE_REASONABLE_XP_BUFFER = 100.0D;
     private static final double ABSOLUTE_STORED_XP_CEILING = 10000.0D;
 
