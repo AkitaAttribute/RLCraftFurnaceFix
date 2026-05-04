@@ -52,15 +52,37 @@ public final class FurnaceXpHooks {
             return;
         }
 
-        double xp = calculateSmeltingXp(extracted, extracted.getCount());
-        if (xp > 0.0D) {
-            applyMutation(furnace, "onFurnaceDecrStack", xp, extracted.getCount());
+        int removedCount = extracted.getCount();
+        float recipeXp = FurnaceRecipes.instance().getSmeltingExperience(extracted);
+        double xpDelta = recipeXp <= 0.0F ? 0.0D : removedCount * (double) recipeXp;
+        double oldXp = getStoredXp(furnace);
+        int oldItems = getAutoSmeltedItems(furnace);
+        double newXpPreview = Math.max(0.0D, oldXp + xpDelta);
+        int newItemsPreview = Math.max(0, oldItems + removedCount);
+        BlockPos pos = furnace.getPos();
+
+        LOGGER.info("Furnace XP accumulation hook=onFurnaceDecrStack pos={} slot={} removedCount={} recipeXp={} contribution={} oldXp={} deltaXp={} newXp={} oldItems={} deltaItems={} newItems={}",
+                pos, index, removedCount, recipeXp, xpDelta, oldXp, xpDelta, newXpPreview, oldItems, removedCount, newItemsPreview);
+
+        if (removedCount > 0 && xpDelta > removedCount * MAX_REASONABLE_XP_PER_ITEM) {
+            String msg = String.format("Furnace XP accumulation anomaly hook=onFurnaceDecrStack pos=%s slot=%d removedCount=%d recipeXp=%.4f contribution=%.2f exceeds max=%.2f. Skipping delta.",
+                    pos, index, removedCount, recipeXp, xpDelta, removedCount * MAX_REASONABLE_XP_PER_ITEM);
+            LOGGER.warn(msg);
+            sendWorldDebugMessage(furnace.getWorld(), msg);
+            return;
+        }
+
+        if (xpDelta > 0.0D) {
+            applyMutation(furnace, "onFurnaceDecrStack", xpDelta, removedCount);
         }
     }
 
     public static void onFurnaceRemoveStackFromSlot(TileEntityFurnace furnace, int index, ItemStack extracted) {
         if (furnace != null && extracted != null && !extracted.isEmpty() && index == 2) {
-            LOGGER.info("Furnace XP mutation hook=onFurnaceRemoveStackFromSlot forwarding count={} @ {}", extracted.getCount(), furnace.getPos());
+            float recipeXp = FurnaceRecipes.instance().getSmeltingExperience(extracted);
+            double contribution = recipeXp <= 0.0F ? 0.0D : extracted.getCount() * (double) recipeXp;
+            LOGGER.info("Furnace XP accumulation hook=onFurnaceRemoveStackFromSlot pos={} slot={} removedCount={} recipeXp={} contribution={}",
+                    furnace.getPos(), index, extracted.getCount(), recipeXp, contribution);
         }
         onFurnaceDecrStack(furnace, index, extracted);
     }
