@@ -1,27 +1,42 @@
 package com.rlcraft.furnacexp.asm;
 
-import net.minecraft.block.BlockFurnace;
 import net.minecraft.entity.item.EntityXPOrb;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.inventory.IInventory;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.crafting.FurnaceRecipes;
 import net.minecraft.nbt.NBTTagCompound;
-import net.minecraft.tileentity.TileEntity;
 import net.minecraft.tileentity.TileEntityFurnace;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.MathHelper;
+import net.minecraft.util.text.TextComponentString;
 import net.minecraft.world.World;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import java.lang.reflect.Field;
 
 public final class FurnaceXpHooks {
     private static final String NBT_KEY = "rlcraftfurnacefix.stored_xp_precise";
+    private static final String NBT_KEY_AUTO_ITEMS = "rlcraftfurnacefix.auto_smelted_items";
     private static final String FIELD_NAME = "rlcraftfurnacefix$storedXp";
+    private static final String FIELD_AUTO_ITEMS = "rlcraftfurnacefix$autoSmeltedItems";
     private static final ThreadLocal<Integer> PLAYER_EXTRACT_DEPTH = new ThreadLocal<Integer>();
-    private static final Field BLOCK_FURNACE_KEEP_INVENTORY = findKeepInventoryField();
+    private static final Logger LOGGER = LogManager.getLogger("RLCraftFurnaceFix");
+    private static final double MAX_REASONABLE_XP_PER_ITEM = 10.0D;
+    private static final double RESET_XP_PER_ITEM = 0.1D;
+    private static volatile boolean DEBUG_ENABLED = false;
 
     private FurnaceXpHooks() {
+    }
+
+    public static boolean isDebugEnabled() {
+        return DEBUG_ENABLED;
+    }
+
+    public static boolean toggleDebug() {
+        DEBUG_ENABLED = !DEBUG_ENABLED;
+        return DEBUG_ENABLED;
     }
 
     public static void beginPlayerExtract() {
@@ -47,13 +62,39 @@ public final class FurnaceXpHooks {
             return;
         }
 
-        double xp = calculateSmeltingXp(extracted, extracted.getCount());
-        if (xp > 0.0D) {
-            setStoredXp(furnace, getStoredXp(furnace) + xp);
+        int removedCount = extracted.getCount();
+        float recipeXp = FurnaceRecipes.instance().getSmeltingExperience(extracted);
+        int awardedXp = computeManualEquivalentAwardedXp(removedCount, recipeXp);
+        double xpDelta = (double) awardedXp;
+        double oldXp = getStoredXp(furnace);
+        int oldItems = getAutoSmeltedItems(furnace);
+        double newXpPreview = Math.max(0.0D, oldXp + xpDelta);
+        int newItemsPreview = Math.max(0, oldItems + removedCount);
+        BlockPos pos = furnace.getPos();
+
+        debugLogInfo("Furnace XP accumulation hook=onFurnaceDecrStack pos={} slot={} removedCount={} recipeXp={} contribution={} oldXp={} deltaXp={} newXp={} oldItems={} deltaItems={} newItems={}",
+                pos, index, removedCount, recipeXp, xpDelta, oldXp, xpDelta, newXpPreview, oldItems, removedCount, newItemsPreview);
+
+        if (removedCount > 0 && xpDelta > removedCount * MAX_REASONABLE_XP_PER_ITEM) {
+            String msg = String.format("Furnace XP accumulation anomaly hook=onFurnaceDecrStack pos=%s slot=%d removedCount=%d recipeXp=%.4f contribution=%.2f exceeds max=%.2f. Skipping delta.",
+                    pos, index, removedCount, recipeXp, xpDelta, removedCount * MAX_REASONABLE_XP_PER_ITEM);
+            debugLogWarn(msg);
+            sendWorldDebugMessage(furnace.getWorld(), msg);
+            return;
+        }
+
+        if (xpDelta > 0.0D) {
+            applyMutation(furnace, "onFurnaceDecrStack", xpDelta, removedCount);
         }
     }
 
     public static void onFurnaceRemoveStackFromSlot(TileEntityFurnace furnace, int index, ItemStack extracted) {
+        if (furnace != null && extracted != null && !extracted.isEmpty() && index == 2) {
+            float recipeXp = FurnaceRecipes.instance().getSmeltingExperience(extracted);
+            double contribution = recipeXp <= 0.0F ? 0.0D : extracted.getCount() * (double) recipeXp;
+            debugLogInfo("Furnace XP accumulation hook=onFurnaceRemoveStackFromSlot pos={} slot={} removedCount={} recipeXp={} contribution={}",
+                    furnace.getPos(), index, extracted.getCount(), recipeXp, contribution);
+        }
         onFurnaceDecrStack(furnace, index, extracted);
     }
 
@@ -65,7 +106,37 @@ public final class FurnaceXpHooks {
         if (furnace == null || nbt == null) {
             return;
         }
-        setStoredXp(furnace, nbt.getDouble(NBT_KEY));
+        double loadedStoredXp = nbt.getDouble(NBT_KEY);
+        int loadedAutoSmeltedItems = nbt.getInteger(NBT_KEY_AUTO_ITEMS);
+        BlockPos pos = furnace.getPos();
+        debugLogInfo("Furnace XP NBT load: storedXp={}, autoSmeltedItems={} @ {}", loadedStoredXp, loadedAutoSmeltedItems, pos);
+
+        double maxReasonableStoredXp = Math.max(0, loadedAutoSmeltedItems) * MAX_REASONABLE_XP_PER_ITEM;
+        if (loadedStoredXp > maxReasonableStoredXp) {
+            double resetValue = Math.max(0, loadedAutoSmeltedItems) * RESET_XP_PER_ITEM;
+            String warning = String.format("Furnace XP NBT sanity issue: raw=%.2f, autoSmeltedItems=%d, maxAllowed=%.2f @ %s. Resetting stored XP to %.2f.",
+                    loadedStoredXp, loadedAutoSmeltedItems, maxReasonableStoredXp, pos, resetValue);
+            debugLogWarn(warning);
+            sendWorldDebugMessage(furnace.getWorld(), warning);
+            loadedStoredXp = resetValue;
+        }
+
+        double oldXp = getStoredXp(furnace);
+        int oldItems = getAutoSmeltedItems(furnace);
+        setStoredXp(furnace, loadedStoredXp);
+        setAutoSmeltedItems(furnace, loadedAutoSmeltedItems);
+        logMutation("onReadFromNbt", furnace, oldXp, loadedStoredXp, oldItems, loadedAutoSmeltedItems);
+    }
+
+    private static void sendWorldDebugMessage(World world, String message) {
+        if (!DEBUG_ENABLED || world == null || world.isRemote || message == null || message.isEmpty()) {
+            return;
+        }
+        for (EntityPlayer player : world.playerEntities) {
+            if (player != null) {
+                player.sendMessage(new TextComponentString(message));
+            }
+        }
     }
 
     public static void onWriteToNbt(TileEntityFurnace furnace, NBTTagCompound nbt) {
@@ -79,6 +150,14 @@ public final class FurnaceXpHooks {
         } else {
             nbt.removeTag(NBT_KEY);
         }
+
+        int autoSmeltedItems = getAutoSmeltedItems(furnace);
+        logMutation("onWriteToNbt(snapshot)", furnace, stored, stored, autoSmeltedItems, autoSmeltedItems);
+        if (autoSmeltedItems > 0) {
+            nbt.setInteger(NBT_KEY_AUTO_ITEMS, autoSmeltedItems);
+        } else {
+            nbt.removeTag(NBT_KEY_AUTO_ITEMS);
+        }
     }
 
     public static void onOutputSlotCrafted(EntityPlayer player, IInventory inventory) {
@@ -88,53 +167,31 @@ public final class FurnaceXpHooks {
         if (!(inventory instanceof TileEntityFurnace)) {
             return;
         }
-        payoutStoredXp((TileEntityFurnace) inventory, player.world, player.posX, player.posY + 0.5D, player.posZ);
+        payoutStoredXp((TileEntityFurnace) inventory, player, player.world, player.posX, player.posY + 0.5D, player.posZ);
     }
 
-
-    private static Field findKeepInventoryField() {
-        try {
-            Field field = BlockFurnace.class.getDeclaredField("keepInventory");
-            field.setAccessible(true);
-            return field;
-        } catch (Throwable ignored) {
-            try {
-                Field field = BlockFurnace.class.getDeclaredField("field_149934_M");
-                field.setAccessible(true);
-                return field;
-            } catch (Throwable ignoredToo) {
-                return null;
-            }
+    private static void payoutStoredXp(TileEntityFurnace furnace, EntityPlayer player, World world, double x, double y, double z) {
+        double rawStoredXp = getStoredXp(furnace);
+        int autoSmeltedItems = getAutoSmeltedItems(furnace);
+        double maxReasonableStoredXp = Math.max(0, autoSmeltedItems) * MAX_REASONABLE_XP_PER_ITEM;
+        if (rawStoredXp > maxReasonableStoredXp) {
+            double corrected = Math.max(0, autoSmeltedItems) * RESET_XP_PER_ITEM;
+            String warning = String.format("Furnace XP payout sanity issue: raw=%.2f, autoSmeltedItems=%d, maxAllowed=%.2f @ %s. Using %.2f for payout.",
+                    rawStoredXp, autoSmeltedItems, maxReasonableStoredXp, furnace != null ? furnace.getPos() : null, corrected);
+            debugLogWarn(warning);
+            sendWorldDebugMessage(world, warning);
+            rawStoredXp = corrected;
+            setStoredXp(furnace, corrected);
         }
-    }
-
-    private static boolean isVanillaFurnaceStateSwap() {
-        if (BLOCK_FURNACE_KEEP_INVENTORY == null) {
-            return false;
-        }
-        try {
-            return BLOCK_FURNACE_KEEP_INVENTORY.getBoolean(null);
-        } catch (Throwable ignored) {
-            return false;
-        }
-    }
-
-    public static void onFurnaceBroken(World world, BlockPos pos) {
-        if (world == null || pos == null || world.isRemote) {
-            return;
+        int payoutXp = toVanillaExperience(rawStoredXp);
+        String debugMessage = formatPayoutDebugMessage(rawStoredXp, payoutXp, autoSmeltedItems);
+        if (DEBUG_ENABLED && player != null) {
+            player.sendMessage(new TextComponentString(debugMessage));
         }
 
-        if (isVanillaFurnaceStateSwap()) {
-            return;
-        }
+        BlockPos pos = furnace != null ? furnace.getPos() : null;
+        debugLogInfo("{}{}", debugMessage, pos == null ? "" : " @ " + pos);
 
-        TileEntity te = world.getTileEntity(pos);
-        if (te instanceof TileEntityFurnace) {
-            payoutStoredXp((TileEntityFurnace) te, world, pos.getX() + 0.5D, pos.getY() + 0.5D, pos.getZ() + 0.5D);
-        }
-    }
-
-    private static void payoutStoredXp(TileEntityFurnace furnace, World world, double x, double y, double z) {
         int stored = toVanillaExperience(drainStoredXp(furnace));
         while (stored > 0) {
             int split = EntityXPOrb.getXPSplit(stored);
@@ -143,12 +200,22 @@ public final class FurnaceXpHooks {
         }
     }
 
-    private static double calculateSmeltingXp(ItemStack stack, int count) {
-        float experience = FurnaceRecipes.instance().getSmeltingExperience(stack);
-        if (experience <= 0.0F) {
+    private static String formatPayoutDebugMessage(double rawStoredXp, int payoutXp, int autoSmeltedItems) {
+        return String.format("Furnace XP Debug: raw=%.2f, payout=%d xp, approxLevels=%.2f, autoSmeltedItems=%d",
+                rawStoredXp, payoutXp, approximateLevelFromTotalXp(payoutXp), autoSmeltedItems);
+    }
+
+    private static double approximateLevelFromTotalXp(int totalXp) {
+        if (totalXp <= 0) {
             return 0.0D;
         }
-        return count * (double) experience;
+        if (totalXp <= 352) {
+            return (-6.0D + Math.sqrt(36.0D + (4.0D * totalXp))) / 2.0D;
+        }
+        if (totalXp <= 1507) {
+            return (40.5D + Math.sqrt(40.5D * 40.5D - 10.0D * (360.0D - totalXp))) / 5.0D;
+        }
+        return (162.5D + Math.sqrt(162.5D * 162.5D - 18.0D * (2220.0D - totalXp))) / 9.0D;
     }
 
     private static int toVanillaExperience(double stored) {
@@ -172,15 +239,96 @@ public final class FurnaceXpHooks {
 
     private static void setStoredXp(TileEntityFurnace furnace, double value) {
         try {
+            double old = getStoredXp(furnace);
             Field field = furnace.getClass().getField(FIELD_NAME);
-            field.setDouble(furnace, Math.max(0.0D, value));
+            double next = Math.max(0.0D, value);
+            field.setDouble(furnace, next);
+            debugLogInfo("Furnace XP direct set hook=setStoredXp oldXp={} deltaXp={} newXp={} oldItems={} deltaItems=0 newItems={} @ {}",
+                    old, next - old, next, getAutoSmeltedItems(furnace), getAutoSmeltedItems(furnace), furnace.getPos());
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private static int getAutoSmeltedItems(TileEntityFurnace furnace) {
+        try {
+            return furnace.getClass().getField(FIELD_AUTO_ITEMS).getInt(furnace);
+        } catch (Throwable ignored) {
+            return 0;
+        }
+    }
+
+    private static void setAutoSmeltedItems(TileEntityFurnace furnace, int value) {
+        try {
+            int old = getAutoSmeltedItems(furnace);
+            Field field = furnace.getClass().getField(FIELD_AUTO_ITEMS);
+            int next = Math.max(0, value);
+            field.setInt(furnace, next);
+            debugLogInfo("Furnace XP direct set hook=setAutoSmeltedItems oldXp={} deltaXp=0 newXp={} oldItems={} deltaItems={} newItems={} @ {}",
+                    getStoredXp(furnace), getStoredXp(furnace), old, (next - old), next, furnace.getPos());
         } catch (Throwable ignored) {
         }
     }
 
     private static double drainStoredXp(TileEntityFurnace furnace) {
-        double value = getStoredXp(furnace);
+        double oldXp = getStoredXp(furnace);
+        int oldItems = getAutoSmeltedItems(furnace);
+        double value = oldXp;
         setStoredXp(furnace, 0.0D);
+        setAutoSmeltedItems(furnace, 0);
+        logMutation("drainStoredXp", furnace, oldXp, 0.0D, oldItems, 0);
         return value;
+    }
+
+    private static void applyMutation(TileEntityFurnace furnace, String hook, double xpDelta, int itemDelta) {
+        double oldXp = getStoredXp(furnace);
+        int oldItems = getAutoSmeltedItems(furnace);
+        double newXp = Math.max(0.0D, oldXp + xpDelta);
+        int newItems = Math.max(0, oldItems + itemDelta);
+        setStoredXp(furnace, newXp);
+        setAutoSmeltedItems(furnace, newItems);
+        logMutation(hook, furnace, oldXp, newXp, oldItems, newItems);
+        checkRuntimeSanity(hook, furnace, newXp, newItems);
+    }
+
+    private static void checkRuntimeSanity(String hook, TileEntityFurnace furnace, double storedXp, int autoSmeltedItems) {
+        double max = Math.max(0, autoSmeltedItems) * MAX_REASONABLE_XP_PER_ITEM;
+        if (storedXp > max) {
+            String msg = String.format("Furnace XP runtime sanity issue hook=%s: raw=%.2f, autoSmeltedItems=%d, maxAllowed=%.2f @ %s",
+                    hook, storedXp, autoSmeltedItems, max, furnace != null ? furnace.getPos() : null);
+            debugLogWarn(msg);
+            sendWorldDebugMessage(furnace != null ? furnace.getWorld() : null, msg);
+        }
+    }
+
+    private static void logMutation(String hook, TileEntityFurnace furnace, double oldXp, double newXp, int oldItems, int newItems) {
+        debugLogInfo("Furnace XP mutation hook={} oldXp={} deltaXp={} newXp={} oldItems={} deltaItems={} newItems={} @ {}",
+                hook, oldXp, newXp - oldXp, newXp, oldItems, newItems - oldItems, newItems, furnace != null ? furnace.getPos() : null);
+    }
+
+    private static int computeManualEquivalentAwardedXp(int removedCount, float recipeXp) {
+        if (removedCount <= 0 || recipeXp <= 0.0F) {
+            return 0;
+        }
+        if (recipeXp < 1.0F) {
+            double scaled = removedCount * (double) recipeXp;
+            int floor = MathHelper.floor(scaled);
+            if (floor < MathHelper.ceil(scaled) && Math.random() < scaled - floor) {
+                floor++;
+            }
+            return floor;
+        }
+        return removedCount;
+    }
+
+    private static void debugLogInfo(String message, Object... args) {
+        if (DEBUG_ENABLED) {
+            LOGGER.info(message, args);
+        }
+    }
+
+    private static void debugLogWarn(String message, Object... args) {
+        if (DEBUG_ENABLED) {
+            LOGGER.warn(message, args);
+        }
     }
 }
