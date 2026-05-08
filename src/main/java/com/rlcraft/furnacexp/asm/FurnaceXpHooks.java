@@ -218,14 +218,6 @@ public final class FurnaceXpHooks {
         return (162.5D + Math.sqrt(162.5D * 162.5D - 18.0D * (2220.0D - totalXp))) / 9.0D;
     }
 
-    private static double calculateSmeltingXp(ItemStack stack, int count) {
-        float experience = FurnaceRecipes.instance().getSmeltingExperience(stack);
-        if (experience <= 0.0F) {
-            return 0.0D;
-        }
-        return count * (double) experience;
-    }
-
     private static int toVanillaExperience(double stored) {
         if (stored <= 0.0D) {
             return 0;
