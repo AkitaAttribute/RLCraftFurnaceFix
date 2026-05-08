@@ -1,14 +1,14 @@
 # RLCraftFurnaceFix
 
 Minecraft Forge 1.12.2 mod that backports modern furnace XP preservation behavior to vanilla furnaces.
-It is developed against Forge 14.23.5.2847 as a known-good baseline and is expected to work across nearby Forge 14.23.5 builds where the touched vanilla/Forge internals are unchanged.
+It targets Forge 1.12.2 (14.23.5.x) where the touched vanilla/Forge internals are unchanged.
 
 ## What it changes
 
 - Automation extraction (hopper/pipes using inventory extraction) no longer destroys smelting XP.
 - XP is accumulated on each vanilla furnace tile entity.
 - Stored XP is paid out when a player manually takes output from the furnace.
-- Stored XP is also paid out when the furnace block is broken (server-side only, single payout).
+- Stored XP is **not** paid out on furnace block break/state-change paths; payout only happens on manual output collection.
 
 ## Build
 
